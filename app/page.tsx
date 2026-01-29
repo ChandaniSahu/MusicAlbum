@@ -143,10 +143,9 @@ export default function SongList() {
             key={cat}
             onClick={() => setActiveCategory(cat)}
             className={`px-4 py-1.5 rounded-full text-sm font-medium
-              ${
-                activeCategory === cat
-                  ? "bg-green-500 text-white"
-                  : "bg-gray-200 text-gray-700"
+              ${activeCategory === cat
+                ? "bg-green-500 text-white"
+                : "bg-gray-200 text-gray-700"
               }`}
           >
             {cat}
@@ -181,12 +180,20 @@ export default function SongList() {
           return (
             <div
               key={song._id}
-              onClick={() => playSongs([song])}
+              onClick={() => {
+                const index = filteredSongs.findIndex(
+                  (s) => s._id === song._id
+                );
+
+                playQueueRef.current = filteredSongs;
+                currentIndexRef.current = index;
+                playCurrent();
+              }}
+
               className={`p-4 rounded-2xl cursor-pointer transition-all
-                ${
-                  isActive
-                    ? "border-2 border-green-500 shadow-lg scale-[1.02]"
-                    : "border border-gray-200 shadow-sm"
+                ${isActive
+                  ? "border-2 border-green-500 shadow-lg scale-[1.02]"
+                  : "border border-gray-200 shadow-sm"
                 }`}
             >
               {/* TOP ROW */}
