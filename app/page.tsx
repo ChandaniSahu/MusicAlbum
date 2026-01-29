@@ -1,13 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FaMusic, FaPlay, FaRandom } from "react-icons/fa";
+import { FaMusic, FaPlay, FaPause, FaRandom } from "react-icons/fa";
 
 export default function SongList() {
   const [songs, setSongs] = useState([]);
   const [categories, setCategories] = useState([]);
   const [activeCategory, setActiveCategory] = useState("fav");
   const [currentSongId, setCurrentSongId] = useState(null);
+
+  // 🔹 NEW STATE
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
 
   const audioRef = useRef(null);
   const playQueueRef = useRef([]);
@@ -37,7 +42,16 @@ export default function SongList() {
     fetchSongs();
   }, []);
 
-  /* ---------- PLAYER LOGIC ---------- */
+  /* 🔹 AUDIO EVENTS (SAFE ADDITION) */
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    audio.ontimeupdate = () => setCurrentTime(audio.currentTime);
+    audio.onloadedmetadata = () => setDuration(audio.duration);
+  }, []);
+
+  /* ---------- PLAYER LOGIC (UNCHANGED) ---------- */
 
   const playSongs = (songList) => {
     if (!songList.length) return;
@@ -60,13 +74,39 @@ export default function SongList() {
     setCurrentSongId(song._id);
     audioRef.current.src = song.audioUrl;
     audioRef.current.play();
+    setIsPlaying(true);
   };
 
   const handleEnded = () => {
     currentIndexRef.current += 1;
     if (currentIndexRef.current < playQueueRef.current.length) {
       playCurrent();
+    } else {
+      setIsPlaying(false);
     }
+  };
+
+  /* 🔹 PAUSE / RESUME (NEW) */
+  const togglePlayPause = (e) => {
+    e.stopPropagation();
+
+    if (!audioRef.current) return;
+
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play();
+      setIsPlaying(true);
+    }
+  };
+
+  /* 🔹 TIME FORMATTER */
+  const formatTime = (time) => {
+    if (!time) return "0:00";
+    const m = Math.floor(time / 60);
+    const s = Math.floor(time % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
   };
 
   /* ---------- FILTERED SONGS ---------- */
@@ -134,29 +174,61 @@ export default function SongList() {
       {/* 🎵 SONG LIST */}
       <div className="space-y-3">
         {filteredSongs.map((song) => {
-          const isPlaying = currentSongId === song._id;
+          const isActive = currentSongId === song._id;
+          const progress =
+            duration > 0 ? (currentTime / duration) * 100 : 0;
 
           return (
             <div
               key={song._id}
               onClick={() => playSongs([song])}
-              className={`flex items-center gap-4 p-4 rounded-2xl cursor-pointer transition-all
+              className={`p-4 rounded-2xl cursor-pointer transition-all
                 ${
-                  isPlaying
-                    ? "border-2 border-green-500 shadow-lg scale-[1.02] animate-pulse"
+                  isActive
+                    ? "border-2 border-green-500 shadow-lg scale-[1.02]"
                     : "border border-gray-200 shadow-sm"
                 }`}
             >
-              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-                <FaMusic className="text-green-600" />
+              {/* TOP ROW */}
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                  <FaMusic className="text-green-600" />
+                </div>
+
+                <div className="flex-1">
+                  <span className="font-semibold">{song.title}</span>
+                  <span className="block text-sm text-gray-500">
+                    {song.singer}
+                  </span>
+                </div>
+
+                {/* ▶️ PAUSE / RESUME (ONLY ACTIVE SONG) */}
+                {isActive && (
+                  <button
+                    onClick={togglePlayPause}
+                    className="text-green-600 text-lg"
+                  >
+                    {isPlaying ? <FaPause /> : <FaPlay />}
+                  </button>
+                )}
               </div>
 
-              <div className="flex flex-col">
-                <span className="font-semibold">{song.title}</span>
-                <span className="text-sm text-gray-500">
-                  {song.singer}
-                </span>
-              </div>
+              {/* ⏳ PROGRESS BAR (ONLY ACTIVE SONG) */}
+              {isActive && (
+                <div className="mt-3">
+                  <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-green-500 transition-all"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>{formatTime(currentTime)}</span>
+                    <span>{formatTime(duration)}</span>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
