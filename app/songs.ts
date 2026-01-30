@@ -1,4 +1,11 @@
-export const songs = [
+export type Song = {
+  title: string;
+  singer:string;
+  category:string;
+  audioPath: string;
+};
+
+export const songs: Song[] = [
   //12
   // {
   //   id: 1,

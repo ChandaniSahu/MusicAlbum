@@ -3,25 +3,33 @@
 import { useEffect, useRef, useState } from "react";
 import { FaMusic, FaPlay, FaPause, FaRandom } from "react-icons/fa";
 
+/* 🔹 ADD TYPE (FIXES ALL LINT ERRORS) */
+type Song = {
+  _id: string;
+  title: string;
+  singer: string;
+  category: string;
+  audioUrl: string;
+};
+
 export default function SongList() {
-  const [songs, setSongs] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [activeCategory, setActiveCategory] = useState("fav");
-  const [currentSongId, setCurrentSongId] = useState(null);
+  const [songs, setSongs] = useState<Song[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [activeCategory, setActiveCategory] = useState<string>("fav");
+  const [currentSongId, setCurrentSongId] = useState<string | null>(null);
 
-  // 🔹 NEW STATE
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [currentTime, setCurrentTime] = useState<number>(0);
+  const [duration, setDuration] = useState<number>(0);
 
-  const audioRef = useRef(null);
-  const playQueueRef = useRef([]);
-  const currentIndexRef = useRef(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playQueueRef = useRef<Song[]>([]);
+  const currentIndexRef = useRef<number>(0);
 
   useEffect(() => {
     const fetchSongs = async () => {
       const res = await fetch("/api/fetch");
-      const data = await res.json();
+      const data: { success: boolean; songs: Song[] } = await res.json();
 
       if (data.success) {
         setSongs(data.songs);
@@ -42,7 +50,6 @@ export default function SongList() {
     fetchSongs();
   }, []);
 
-  /* 🔹 AUDIO EVENTS (SAFE ADDITION) */
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -51,25 +58,22 @@ export default function SongList() {
     audio.onloadedmetadata = () => setDuration(audio.duration);
   }, []);
 
-  /* ---------- PLAYER LOGIC (UNCHANGED) ---------- */
-
-  const playSongs = (songList) => {
+  const playSongs = (songList: Song[]) => {
     if (!songList.length) return;
 
     playQueueRef.current = songList;
     currentIndexRef.current = 0;
-
     playCurrent();
   };
 
-  const shuffleSongs = (songList) => {
+  const shuffleSongs = (songList: Song[]) => {
     const shuffled = [...songList].sort(() => Math.random() - 0.5);
     playSongs(shuffled);
   };
 
   const playCurrent = () => {
     const song = playQueueRef.current[currentIndexRef.current];
-    if (!song) return;
+    if (!song || !audioRef.current) return;
 
     setCurrentSongId(song._id);
     audioRef.current.src = song.audioUrl;
@@ -86,10 +90,8 @@ export default function SongList() {
     }
   };
 
-  /* 🔹 PAUSE / RESUME (NEW) */
-  const togglePlayPause = (e) => {
+  const togglePlayPause = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
-
     if (!audioRef.current) return;
 
     if (isPlaying) {
@@ -101,15 +103,12 @@ export default function SongList() {
     }
   };
 
-  /* 🔹 TIME FORMATTER */
-  const formatTime = (time) => {
+  const formatTime = (time: number) => {
     if (!time) return "0:00";
     const m = Math.floor(time / 60);
     const s = Math.floor(time % 60).toString().padStart(2, "0");
     return `${m}:${s}`;
   };
-
-  /* ---------- FILTERED SONGS ---------- */
 
   const filteredSongs = songs.filter(
     (song) => song.category === activeCategory
@@ -119,7 +118,6 @@ export default function SongList() {
     <div className="w-full max-w-xl mx-auto space-y-6">
       <audio ref={audioRef} onEnded={handleEnded} />
 
-      {/* 🔥 GLOBAL CONTROLS */}
       <div className="flex gap-3">
         <button
           onClick={() => playSongs(songs)}
@@ -136,16 +134,16 @@ export default function SongList() {
         </button>
       </div>
 
-      {/* CATEGORY BUTTONS */}
       <div className="flex gap-3">
         {categories.map((cat) => (
           <button
             key={cat}
             onClick={() => setActiveCategory(cat)}
             className={`px-4 py-1.5 rounded-full text-sm font-medium
-              ${activeCategory === cat
-                ? "bg-green-500 text-white"
-                : "bg-gray-200 text-gray-700"
+              ${
+                activeCategory === cat
+                  ? "bg-green-500 text-white"
+                  : "bg-gray-200 text-gray-700"
               }`}
           >
             {cat}
@@ -153,7 +151,6 @@ export default function SongList() {
         ))}
       </div>
 
-      {/* 🎧 CATEGORY CONTROLS */}
       <div className="flex gap-3">
         <button
           onClick={() => playSongs(filteredSongs)}
@@ -170,7 +167,6 @@ export default function SongList() {
         </button>
       </div>
 
-      {/* 🎵 SONG LIST */}
       <div className="space-y-3">
         {filteredSongs.map((song) => {
           const isActive = currentSongId === song._id;
@@ -184,19 +180,17 @@ export default function SongList() {
                 const index = filteredSongs.findIndex(
                   (s) => s._id === song._id
                 );
-
                 playQueueRef.current = filteredSongs;
                 currentIndexRef.current = index;
                 playCurrent();
               }}
-
               className={`p-4 rounded-2xl cursor-pointer transition-all
-                ${isActive
-                  ? "border-2 border-green-500 shadow-lg scale-[1.02]"
-                  : "border border-gray-200 shadow-sm"
+                ${
+                  isActive
+                    ? "border-2 border-green-500 shadow-lg scale-[1.02]"
+                    : "border border-gray-200 shadow-sm"
                 }`}
             >
-              {/* TOP ROW */}
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
                   <FaMusic className="text-green-600" />
@@ -209,7 +203,6 @@ export default function SongList() {
                   </span>
                 </div>
 
-                {/* ▶️ PAUSE / RESUME (ONLY ACTIVE SONG) */}
                 {isActive && (
                   <button
                     onClick={togglePlayPause}
@@ -220,7 +213,6 @@ export default function SongList() {
                 )}
               </div>
 
-              {/* ⏳ PROGRESS BAR (ONLY ACTIVE SONG) */}
               {isActive && (
                 <div className="mt-3">
                   <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden">
