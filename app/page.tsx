@@ -58,6 +58,12 @@ export default function SongList() {
     audio.onloadedmetadata = () => setDuration(audio.duration);
   }, []);
 
+  useEffect(() => {
+  if (audioRef.current) {
+    audioRef.current.crossOrigin = "anonymous";
+  }
+}, []);
+
   const playSongs = (songList: Song[]) => {
     if (!songList.length) return;
 
@@ -77,25 +83,24 @@ const playCurrent = async () => {
 
   const audio = audioRef.current;
 
-  // 🔥 HARD RESET
+  // Stop current playback safely
   audio.pause();
   audio.currentTime = 0;
-  audio.src = "";
-  audio.load();
 
+  // Update active song
   setCurrentSongId(song._id);
 
+  // Set new source (browser handles buffering)
   audio.src = song.audioUrl;
-  audio.load();
 
   try {
     await audio.play();
     setIsPlaying(true);
-  } catch (err) {
-    console.log("Autoplay blocked, waiting for user action");
+  } catch {
     setIsPlaying(false);
   }
 };
+
 
 
   const handleEnded = () => {
@@ -136,11 +141,9 @@ const playCurrent = async () => {
     <button onClick={()=>{window.location.href='/upload'}}
     className="absolute right-3 top-3">.</button>
       <audio ref={audioRef}
-      preload="auto"
+      preload="metadata"
       onEnded={handleEnded}
-        onError={() => {
-    handleEnded(); // auto play next
-  }}
+        
       />
 
       <div className="flex gap-3">
