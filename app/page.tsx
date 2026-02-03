@@ -71,15 +71,32 @@ export default function SongList() {
     playSongs(shuffled);
   };
 
-  const playCurrent = () => {
-    const song = playQueueRef.current[currentIndexRef.current];
-    if (!song || !audioRef.current) return;
+const playCurrent = async () => {
+  const song = playQueueRef.current[currentIndexRef.current];
+  if (!song || !audioRef.current) return;
 
-    setCurrentSongId(song._id);
-    audioRef.current.src = song.audioUrl;
-    audioRef.current.play();
+  const audio = audioRef.current;
+
+  // 🔥 HARD RESET
+  audio.pause();
+  audio.currentTime = 0;
+  audio.src = "";
+  audio.load();
+
+  setCurrentSongId(song._id);
+
+  audio.src = song.audioUrl;
+  audio.load();
+
+  try {
+    await audio.play();
     setIsPlaying(true);
-  };
+  } catch (err) {
+    console.log("Autoplay blocked, waiting for user action");
+    setIsPlaying(false);
+  }
+};
+
 
   const handleEnded = () => {
     currentIndexRef.current += 1;
@@ -116,7 +133,15 @@ export default function SongList() {
 
   return (
     <div className="w-full max-w-xl mx-auto space-y-6">
-      <audio ref={audioRef} onEnded={handleEnded} />
+    <button onClick={()=>{window.location.href='/upload'}}
+    className="absolute right-3 top-3">.</button>
+      <audio ref={audioRef}
+      preload="auto"
+      onEnded={handleEnded}
+        onError={() => {
+    handleEnded(); // auto play next
+  }}
+      />
 
       <div className="flex gap-3">
         <button
@@ -180,7 +205,7 @@ export default function SongList() {
                 const index = filteredSongs.findIndex(
                   (s) => s._id === song._id
                 );
-                playQueueRef.current = filteredSongs;
+                playQueueRef.current = [...filteredSongs];
                 currentIndexRef.current = index;
                 playCurrent();
               }}
