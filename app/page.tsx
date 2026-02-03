@@ -214,6 +214,26 @@ audio.src = song.audioUrl;
         )}
       </div>
 
+      {/* 🔹 CATEGORY-SPECIFIC CONTROLS */}
+{activeCategory !== "selected" && (
+  <div className="flex gap-3 flex-wrap items-center">
+    <button
+      onClick={() => playSongs(filteredSongs)}
+      className="flex items-center gap-2 px-4 py-2 bg-green-400 text-white rounded-full"
+    >
+      <FaPlay /> Play {activeCategory}
+    </button>
+
+    <button
+      onClick={() => shuffleSongs(filteredSongs)}
+      className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-full"
+    >
+      <FaRandom /> Shuffle {activeCategory}
+    </button>
+  </div>
+)}
+
+
       {/* 🔹 SONG LIST */}
       <div className="space-y-3">
         {filteredSongs.map((song) => {
