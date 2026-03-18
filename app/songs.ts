@@ -99,6 +99,115 @@ export const songs: Song[] = [
   //   audioPath: "./fav/TereSangYaara.mp3",
   // },
 
+  //   {
+  //   title: "Ek Zindagi",
+  //   singer: "Taniskaa Sanghvi, Sachin-Jigar",
+  //   category: "fav",
+  //   audioPath: "./Fav/EkZindagi.mp3",
+  // },
+  // {
+  //   title: "Tujhe Kitna Chahne Lage",
+  //   singer: "Arijit Singh",
+  //   category: "fav",
+  //   audioPath: "./Fav/TujheKitnaChahneLage.mp3",
+  // },
+  // {
+  //   title: "Jogi Hona",
+  //   singer: "Asees Kaur",
+  //   category: "fav",
+  //   audioPath: "./Fav/JogiHona.mp3",
+  // },
+  // {
+  //   title: "Mere Sohneya",
+  //   singer: "Parampara Thakur, Sachet Tandon",
+  //   category: "fav",
+  //   audioPath: "./Fav/MereSohneya.mp3",
+  // },
+  // {
+  //   title: "Humsafar",
+  //   singer: "Akhil Sachdeva, Mansheel Gujral",
+  //   category: "fav",
+  //   audioPath: "./Fav/Humsafar.mp3",
+  // },
+  // {
+  //   title: "Maiyya Mainu",
+  //   singer: "Sachet Tandon",
+  //   category: "fav",
+  //   audioPath: "./Fav/MaiyyaMainu.mp3",
+  // },
+  // {
+  //   title: "Bolna Mahi Bolna",
+  //   singer: "Arijit Singh, Asees Kaur",
+  //   category: "fav",
+  //   audioPath: "./Fav/BolnaMahiBolna.mp3",
+  // },
+  // {
+  //   title: "Lae Dooba",
+  //   singer: "Sunidhi Chauhan",
+  //   category: "fav",
+  //   audioPath: "./Fav/LaeDooba.mp3",
+  // },
+  // {
+  //   title: "Tum Se Behtar",
+  //   singer: "Jubin Nautiyal",
+  //   category: "fav",
+  //   audioPath: "./Fav/TumSeBehtar.mp3",
+  // },
+  // {
+  //   title: "Mushkil Hai",
+  //   singer: "Arijit Singh",
+  //   category: "fav",
+  //   audioPath: "./Fav/MushkilHai.mp3",
+  // },
+  // {
+  //   title: "Phir Le Aya Dil",
+  //   singer: "Arijit Singh",
+  //   category: "fav",
+  //   audioPath: "./Fav/PhirLeAyaDil.mp3",
+  // },
+  // {
+  //   title: "Maana Dil",
+  //   singer: "B Praak",
+  //   category: "fav",
+  //   audioPath: "./Fav/MaanaDil.mp3",
+  // },
+  // {
+  //   title: "Dori Tutt Gaiyaan",
+  //   singer: "Rahat Fateh Ali Khan",
+  //   category: "fav",
+  //   audioPath: "./Fav/DoriTuttGaiyaan.mp3",
+  // },
+  // {
+  //   title: "Aaj Se Teri",
+  //   singer: "Arijit Singh",
+  //   category: "fav",
+  //   audioPath: "./Fav/AajSeTeri.mp3",
+  // },
+  // {
+  //   title: "Tum Ho Toh",
+  //   singer: "Vishal Mishra",
+  //   category: "fav",
+  //   audioPath: "./Fav/TumHoToh.mp3",
+  // },
+  // {
+  //   title: "Dil Ibadat",
+  //   singer: "KK",
+  //   category: "fav",
+  //   audioPath: "./Fav/DilIbadat.mp3",
+  // },
+  // {
+  //   title: "Saiyaara",
+  //   singer: "Mohit Chauhan",
+  //   category: "fav",
+  //   audioPath: "./Fav/Saiyaara.mp3",
+  // },
+  //  {
+  //   title: "Dhun",
+  //   singer: "Arijit Singh",
+  //   category: "fav",
+  //   audioPath: "./Fav/Dhun.mp3",
+  // },
+
 // 7
 // {
 //     title: "Tenu Na Bol Pawaan",
@@ -857,6 +966,12 @@ export const songs: Song[] = [
   //   singer: "Hansraj Raghuwanshi",
   //   category: "spritual",
   //   audioPath: "./Spritual/Parvati Boli Shankar Se.mp3",
+  // },
+  // {
+  //   title: "Mera Bhola Hai Bhandari",
+  //   singer: "Hansraj Raghuwanshi",
+  //   category: "spritual",
+  //   audioPath: "./Spritual/MeraBholaHai.mp3",
   // },
 ];
 
