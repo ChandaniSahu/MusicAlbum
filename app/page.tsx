@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { FaMusic, FaPlay, FaPause, FaRandom } from "react-icons/fa";
+import { FaMusic, FaPlay, FaPause, FaRandom, FaFileAudio } from "react-icons/fa";
 
 type Song = {
   _id: string;
@@ -9,6 +9,7 @@ type Song = {
   singer: string;
   category: string;
   audioUrl: string;
+  fileSize?: number; // Add optional fileSize property
 };
 
 export default function SongList() {
@@ -30,20 +31,48 @@ export default function SongList() {
   const playQueueRef = useRef<Song[]>([]);
   const currentIndexRef = useRef(0);
 
+  // 🔹 helper function to format file size
+  const formatFileSize = (bytes?: number): string => {
+    if (!bytes) return "Size unknown";
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
+  };
+
+  // 🔹 fetch song file sizes
+  const fetchSongFileSize = useCallback(async (song: Song): Promise<number | null> => {
+    try {
+      const response = await fetch(song.audioUrl, { method: 'HEAD' });
+      const contentLength = response.headers.get('content-length');
+      return contentLength ? parseInt(contentLength, 10) : null;
+    } catch (error) {
+      console.error(`Failed to fetch size for ${song.title}:`, error);
+      return null;
+    }
+  }, []);
+
   // 🔹 fetch songs (lint-safe)
   const fetchSongs = useCallback(async () => {
     const res = await fetch("/api/fetch");
     const data = (await res.json()) as { success: boolean; songs: Song[] };
 
-  if (data.success) {
-    setSongs(data.songs);
+    if (data.success) {
+      // Fetch file sizes for all songs
+      const songsWithSizes = await Promise.all(
+        data.songs.map(async (song) => {
+          const fileSize = await fetchSongFileSize(song);
+          return { ...song, fileSize: fileSize || undefined };
+        })
+      );
+      
+      setSongs(songsWithSizes);
 
-    const unique = [...new Set(data.songs.map((s: Song) => s.category))];
-    setCategories(unique);
+      const unique = [...new Set(songsWithSizes.map((s: Song) => s.category))];
+      setCategories(unique);
 
-    setActiveCategory(unique.includes("fav") ? "fav" : unique[0] ?? "");
-  }
-}, []);
+      setActiveCategory(unique.includes("fav") ? "fav" : unique[0] ?? "");
+    }
+  }, [fetchSongFileSize]);
 
   useEffect(() => {
     fetchSongs();
@@ -77,15 +106,14 @@ export default function SongList() {
 
     const audio = audioRef.current;
     audio.pause();
-audio.currentTime = 0;
+    audio.currentTime = 0;
 
-// reset UI state to avoid stale metadata
-setCurrentTime(0);
-setDuration(0);
+    // reset UI state to avoid stale metadata
+    setCurrentTime(0);
+    setDuration(0);
 
-setCurrentSongId(song._id);
-audio.src = song.audioUrl;
-
+    setCurrentSongId(song._id);
+    audio.src = song.audioUrl;
 
     try {
       await audio.play();
@@ -130,17 +158,20 @@ audio.src = song.audioUrl;
 
   return (
     <div className="w-full max-w-xl mx-auto space-y-6">
-      <audio ref={audioRef} preload="metadata" onEnded={handleEnded} 
+      <audio 
+        ref={audioRef} 
+        preload="metadata" 
+        onEnded={handleEnded} 
         onError={() => {
-    // skip broken track & continue playback
-    currentIndexRef.current += 1;
-
-    if (currentIndexRef.current < playQueueRef.current.length) {
-      playCurrent();
-    } else {
-      setIsPlaying(false);
-    }
-  }}/>
+          // skip broken track & continue playback
+          currentIndexRef.current += 1;
+          if (currentIndexRef.current < playQueueRef.current.length) {
+            playCurrent();
+          } else {
+            setIsPlaying(false);
+          }
+        }}
+      />
 
       {/* 🔹 GLOBAL CONTROLS */}
       <div className="flex gap-3 flex-wrap items-center">
@@ -209,30 +240,29 @@ audio.src = song.audioUrl;
                 : "bg-blue-200"
             }`}
           >
-            Selected
+            Selected ({selectedSongOrder.length})
           </button>
         )}
       </div>
 
       {/* 🔹 CATEGORY-SPECIFIC CONTROLS */}
-{activeCategory !== "selected" && (
-  <div className="flex gap-3 flex-wrap items-center">
-    <button
-      onClick={() => playSongs(filteredSongs)}
-      className="flex items-center gap-2 px-4 py-2 bg-green-400 text-white rounded-full"
-    >
-      <FaPlay /> Play {activeCategory}
-    </button>
+      {activeCategory !== "selected" && (
+        <div className="flex gap-3 flex-wrap items-center">
+          <button
+            onClick={() => playSongs(filteredSongs)}
+            className="flex items-center gap-2 px-4 py-2 bg-green-400 text-white rounded-full"
+          >
+            <FaPlay /> Play {activeCategory}
+          </button>
 
-    <button
-      onClick={() => shuffleSongs(filteredSongs)}
-      className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-full"
-    >
-      <FaRandom /> Shuffle {activeCategory}
-    </button>
-  </div>
-)}
-
+          <button
+            onClick={() => shuffleSongs(filteredSongs)}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-full"
+          >
+            <FaRandom /> Shuffle {activeCategory}
+          </button>
+        </div>
+      )}
 
       {/* 🔹 SONG LIST */}
       <div className="space-y-3">
@@ -282,12 +312,17 @@ audio.src = song.audioUrl;
                   />
                 )}
 
-                <FaMusic className="text-green-600" />
+                <FaMusic className="text-green-600 flex-shrink-0" />
 
                 <div className="flex-1">
                   <div className="font-semibold">{song.title}</div>
                   <div className="text-sm text-gray-500">
                     {song.singer}
+                  </div>
+                  {/* Display file size */}
+                  <div className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                    <FaFileAudio className="text-xs" />
+                    <span>{formatFileSize(song.fileSize)}</span>
                   </div>
                 </div>
 
