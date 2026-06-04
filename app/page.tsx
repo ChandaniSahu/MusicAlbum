@@ -1,8 +1,8 @@
-// /app/page.tsx - COMPLETE REPLACEMENT WITH FIXES
+// /app/page.tsx - COMPLETE REPLACEMENT WITH PLAYBACK RESUME FEATURE (FIXED)
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { FaMusic, FaPlay, FaPause, FaRandom, FaFileAudio } from "react-icons/fa";
+import { FaMusic, FaPlay, FaPause, FaRandom, FaFileAudio, FaHistory } from "react-icons/fa";
 
 type Song = {
   _id: string;
@@ -12,6 +12,18 @@ type Song = {
   audioUrl: string;
   fileSize?: number;
 };
+
+type PlaybackState = {
+  songId: string;
+  currentTime: number;
+  category: string;
+  index: number;
+  shuffle: boolean;
+};
+
+const STORAGE_KEY = "playbackState";
+const THROTTLE_MS = 1000;
+const MAX_RETRY_ATTEMPTS = 3;
 
 export default function SongList() {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -40,6 +52,14 @@ export default function SongList() {
   // ✅ New: Cache for blob URLs to avoid refetching
   const blobCacheRef = useRef<Map<string, string>>(new Map());
 
+  // ✅ Playback resume refs
+  const isRestoringRef = useRef(false);
+  const lastSaveTimeRef = useRef(0);
+  const hasRestoredRef = useRef(false);
+  const shuffleModeRef = useRef(false);
+  const errorRetryCountRef = useRef(0);
+  const isComponentMountedRef = useRef(true);
+
   const formatFileSize = (bytes?: number): string => {
     if (!bytes) return "Size unknown";
     const sizes = ['B', 'KB', 'MB', 'GB'];
@@ -57,7 +77,6 @@ export default function SongList() {
     try {
       setIsLoading(true);
       const response = await fetch(audioUrl, {
-        // ✅ Use POST for iOS to avoid range request issues
         method: isIOS ? "POST" : "GET",
         headers: {
           "Cache-Control": "no-cache",
@@ -91,15 +110,216 @@ export default function SongList() {
     blobCacheRef.current.clear();
   }, []);
 
+  // ✅ Save playback state to localStorage
+  const savePlaybackState = useCallback(() => {
+    if (isRestoringRef.current) return;
+    
+    const now = Date.now();
+    if (now - lastSaveTimeRef.current < THROTTLE_MS) return;
+    lastSaveTimeRef.current = now;
+
+    try {
+      const state: PlaybackState = {
+        songId: currentSongId || "",
+        currentTime: audioRef.current?.currentTime || 0,
+        category: activeCategory,
+        index: currentIndexRef.current,
+        shuffle: shuffleModeRef.current,
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (error) {
+      console.error("Failed to save playback state:", error);
+    }
+  }, [currentSongId, activeCategory]);
+
+  // ✅ Load and validate playback state from localStorage
+  const loadPlaybackState = useCallback((): PlaybackState | null => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw);
+      
+      // Validate structure
+      if (!parsed || typeof parsed !== "object") return null;
+      if (typeof parsed.songId !== "string" || !parsed.songId) return null;
+      if (typeof parsed.currentTime !== "number" || isNaN(parsed.currentTime) || parsed.currentTime < 0) {
+        parsed.currentTime = 0;
+      }
+      if (typeof parsed.category !== "string" || !parsed.category) {
+        parsed.category = "fav";
+      }
+      if (typeof parsed.index !== "number" || isNaN(parsed.index) || parsed.index < 0) {
+        parsed.index = 0;
+      }
+      if (typeof parsed.shuffle !== "boolean") {
+        parsed.shuffle = false;
+      }
+
+      return parsed as PlaybackState;
+    } catch (error) {
+      console.error("Failed to load playback state:", error);
+      // Clear corrupted data
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+      return null;
+    }
+  }, []);
+
+  // ✅ Restore playback state
+  const restorePlaybackState = useCallback((songsList: Song[]) => {
+    if (!isComponentMountedRef.current) return;
+    if (hasRestoredRef.current || songsList.length === 0) return;
+    hasRestoredRef.current = true;
+
+    const savedState = loadPlaybackState();
+    if (!savedState || !savedState.songId) return;
+
+    // Validate that the song still exists
+    const savedSong = songsList.find(s => s._id === savedState.songId);
+    if (!savedSong) {
+      console.log("Saved song not found, clearing playback state");
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+      return;
+    }
+
+    // Validate category
+    const validCategory = categories.includes(savedState.category) 
+      ? savedState.category 
+      : "fav";
+
+    isRestoringRef.current = true;
+
+    // Set category if different
+    if (validCategory !== activeCategory) {
+      setActiveCategory(validCategory);
+    }
+
+    // Restore shuffle mode
+    shuffleModeRef.current = savedState.shuffle;
+
+    // Build play queue based on shuffle state
+    const categorySongs = songsList.filter(s => s.category === validCategory);
+    if (categorySongs.length === 0) {
+      isRestoringRef.current = false;
+      return;
+    }
+
+    let queue: Song[];
+    if (savedState.shuffle) {
+      // For shuffle, we need to ensure the saved song is in the queue
+      queue = [...categorySongs].sort(() => Math.random() - 0.5);
+      if (!queue.find(s => s._id === savedState.songId)) {
+        queue.unshift(savedSong);
+      }
+    } else {
+      queue = categorySongs;
+    }
+
+    playQueueRef.current = queue;
+
+    // Find song index in queue
+    let songIndex = queue.findIndex(s => s._id === savedState.songId);
+    if (songIndex === -1) {
+      songIndex = 0;
+    }
+
+    currentIndexRef.current = songIndex;
+    
+    // Restore song without autoplay
+    const song = queue[songIndex];
+    if (song && audioRef.current && isComponentMountedRef.current) {
+      setCurrentSongId(song._id);
+      setIsPlaying(false);
+      
+      const audio = audioRef.current;
+      audio.pause();
+      audio.currentTime = 0;
+      
+      // Set audio source without triggering play
+      let audioSrc: string;
+      if (isIOS) {
+        fetchAudioAsBlob(song.audioUrl).then(src => {
+          if (!isComponentMountedRef.current) return;
+          audio.src = src;
+          audio.load();
+          
+          // Wait for metadata before seeking
+          const onMetadataLoaded = () => {
+            audio.removeEventListener('loadedmetadata', onMetadataLoaded);
+            if (!isComponentMountedRef.current) return;
+            if (savedState.currentTime > 0 && audio.duration > 0 && savedState.currentTime < audio.duration) {
+              audio.currentTime = savedState.currentTime;
+            }
+            setCurrentTime(audio.currentTime);
+            isRestoringRef.current = false;
+          };
+          
+          audio.addEventListener('loadedmetadata', onMetadataLoaded);
+          
+          // Timeout in case metadata never loads
+          setTimeout(() => {
+            audio.removeEventListener('loadedmetadata', onMetadataLoaded);
+            isRestoringRef.current = false;
+          }, 5000);
+        }).catch((err) => {
+          console.error("Failed to restore audio:", err);
+          isRestoringRef.current = false;
+          // Clear problematic state
+          try {
+            localStorage.removeItem(STORAGE_KEY);
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+        });
+      } else {
+        audioSrc = `${song.audioUrl}?t=${Date.now()}`;
+        audio.src = audioSrc;
+        audio.load();
+        
+        const onMetadataLoaded = () => {
+          audio.removeEventListener('loadedmetadata', onMetadataLoaded);
+          if (!isComponentMountedRef.current) return;
+          if (savedState.currentTime > 0 && audio.duration > 0 && savedState.currentTime < audio.duration) {
+            audio.currentTime = savedState.currentTime;
+          }
+          setCurrentTime(audio.currentTime);
+          isRestoringRef.current = false;
+        };
+        
+        audio.addEventListener('loadedmetadata', onMetadataLoaded);
+        
+        // Timeout in case metadata never loads
+        setTimeout(() => {
+          audio.removeEventListener('loadedmetadata', onMetadataLoaded);
+          isRestoringRef.current = false;
+        }, 5000);
+      }
+    } else {
+      isRestoringRef.current = false;
+    }
+  }, [categories, activeCategory, isIOS, fetchAudioAsBlob, loadPlaybackState]);
+
   // 🔹 fetch songs with iOS detection
   const fetchSongs = useCallback(async () => {
+    if (!isComponentMountedRef.current) return;
+    
     try {
       const res = await fetch("/api/fetch");
       const data = await res.json();
       
+      if (!isComponentMountedRef.current) return;
+      
       if (data.success) {
         setSongs(data.songs);
-        setIsIOS(data.isIOS || false); // ✅ Store iOS flag
+        setIsIOS(data.isIOS || false);
         
         // Fetch file sizes with timeout for hosted environment
         const songsWithSizes = await Promise.all(
@@ -120,30 +340,53 @@ export default function SongList() {
           })
         );
         
+        if (!isComponentMountedRef.current) return;
         setSongs(songsWithSizes);
         
         const unique = [...new Set(songsWithSizes.map((s: Song) => s.category))];
         setCategories(unique);
-        setActiveCategory(unique.includes("fav") ? "fav" : unique[0] ?? "");
+        
+        const defaultCategory = unique.includes("fav") ? "fav" : unique[0] ?? "";
+        
+        // Check if we should restore from saved state
+        if (!hasRestoredRef.current) {
+          const savedState = loadPlaybackState();
+          if (savedState && savedState.category && unique.includes(savedState.category)) {
+            setActiveCategory(savedState.category);
+            // Restore playback after a short delay to ensure state is settled
+            setTimeout(() => {
+              if (isComponentMountedRef.current) {
+                restorePlaybackState(songsWithSizes);
+              }
+            }, 100);
+          } else {
+            setActiveCategory(defaultCategory);
+            hasRestoredRef.current = true;
+          }
+        }
       }
     } catch (error) {
       console.error("Failed to fetch songs:", error);
-      setError("Failed to load songs. Please refresh.");
+      if (isComponentMountedRef.current) {
+        setError("Failed to load songs. Please refresh.");
+      }
     }
-  }, []);
+  }, [loadPlaybackState, restorePlaybackState]);
 
   useEffect(() => {
+    isComponentMountedRef.current = true;
     fetchSongs();
     
     // ✅ Cleanup on unmount
     return () => {
+      isComponentMountedRef.current = false;
       cleanupBlobUrls();
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.src = "";
       }
     };
-  }, [fetchSongs, cleanupBlobUrls]);
+  }, []); // Empty dependency array to prevent re-runs
 
   // 🔹 audio setup with hosted environment fixes
   useEffect(() => {
@@ -153,15 +396,58 @@ export default function SongList() {
     // ✅ iOS: Use "metadata" only, don't preload entire file
     audio.preload = isIOS ? "metadata" : "auto";
     
-    const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
-    const handleLoadedMetadata = () => setDuration(audio.duration);
+    const handleTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+      // Save playback state on time update (throttled)
+      if (!isRestoringRef.current) {
+        savePlaybackState();
+      }
+    };
+    
+    const handleLoadedMetadata = () => {
+      setDuration(audio.duration);
+    };
+    
     const handleWaiting = () => setIsLoading(true);
     const handleCanPlay = () => setIsLoading(false);
+    
     const handleError = (e: Event) => {
-      console.error("Audio error:", e);
+      // Prevent infinite error loops
+      if (isRestoringRef.current) {
+        console.log("Audio error during restore, skipping retry");
+        isRestoringRef.current = false;
+        try {
+          localStorage.removeItem(STORAGE_KEY);
+        } catch (err) {
+          // Ignore
+        }
+        return;
+      }
+      
+      errorRetryCountRef.current += 1;
+      console.error("Audio error:", e, "Retry count:", errorRetryCountRef.current);
+      
+      if (errorRetryCountRef.current >= MAX_RETRY_ATTEMPTS) {
+        setError("Unable to play this song. Skipping...");
+        setIsLoading(false);
+        setIsPlaying(false);
+        
+        // Move to next song
+        currentIndexRef.current += 1;
+        if (currentIndexRef.current < playQueueRef.current.length) {
+          setTimeout(() => {
+            errorRetryCountRef.current = 0;
+            playCurrent();
+          }, 500);
+        } else {
+          setCurrentSongId(null);
+        }
+        return;
+      }
+      
       setError("Playback error. Retrying...");
       setTimeout(() => {
-        if (currentIndexRef.current < playQueueRef.current.length) {
+        if (currentIndexRef.current < playQueueRef.current.length && isComponentMountedRef.current) {
           playCurrent();
         }
       }, 1000);
@@ -181,16 +467,24 @@ export default function SongList() {
       audio.removeEventListener('canplay', handleCanPlay);
       audio.removeEventListener('error', handleError);
     };
-  }, [isIOS]);
+  }, [isIOS, savePlaybackState]);
+
+  // ✅ Save state when category changes
+  useEffect(() => {
+    if (!isRestoringRef.current && hasRestoredRef.current) {
+      savePlaybackState();
+    }
+  }, [activeCategory, savePlaybackState]);
 
   // ✅ UPDATED: Play current with hosted URL fixes
   const playCurrent = async () => {
     const song = playQueueRef.current[currentIndexRef.current];
-    if (!song || !audioRef.current) return;
+    if (!song || !audioRef.current || !isComponentMountedRef.current) return;
 
     const audio = audioRef.current;
     setIsLoading(true);
     setError(null);
+    errorRetryCountRef.current = 0;
     
     try {
       audio.pause();
@@ -198,6 +492,11 @@ export default function SongList() {
       setCurrentTime(0);
       setDuration(0);
       setCurrentSongId(song._id);
+      
+      // Save state on song change
+      if (!isRestoringRef.current) {
+        savePlaybackState();
+      }
       
       let audioSrc: string;
       
@@ -219,6 +518,7 @@ export default function SongList() {
       
       // ✅ Small delay to ensure src is loaded
       setTimeout(async () => {
+        if (!isComponentMountedRef.current) return;
         try {
           await audio.play();
           setIsPlaying(true);
@@ -231,32 +531,38 @@ export default function SongList() {
       }, 100);
     } catch (error) {
       console.error("Error in playCurrent:", error);
-      setError("Failed to load song");
-      setIsLoading(false);
-      setIsPlaying(false);
+      if (isComponentMountedRef.current) {
+        setError("Failed to load song");
+        setIsLoading(false);
+        setIsPlaying(false);
+      }
     }
   };
 
-  const playSongs = (list: Song[]) => {
+  const playSongs = (list: Song[], isShuffle: boolean = false) => {
     if (!list.length) return;
     retryCountRef.current = 0;
+    errorRetryCountRef.current = 0;
+    shuffleModeRef.current = isShuffle;
     playQueueRef.current = list;
     currentIndexRef.current = 0;
     playCurrent();
   };
 
   const shuffleSongs = (list: Song[]) => {
-    playSongs([...list].sort(() => Math.random() - 0.5));
+    playSongs([...list].sort(() => Math.random() - 0.5), true);
   };
 
   const handleEnded = () => {
+    if (!isComponentMountedRef.current) return;
+    errorRetryCountRef.current = 0;
     currentIndexRef.current += 1;
     if (currentIndexRef.current < playQueueRef.current.length) {
-      // ✅ Small delay for mobile
       setTimeout(() => playCurrent(), 200);
     } else {
       setIsPlaying(false);
       setCurrentSongId(null);
+      savePlaybackState();
     }
   };
 
@@ -267,6 +573,7 @@ export default function SongList() {
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
+      savePlaybackState();
     } else {
       try {
         await audioRef.current.play();
@@ -288,11 +595,116 @@ export default function SongList() {
     `${Math.floor(t / 60)}:${Math.floor(t % 60).toString().padStart(2, "0")}`;
 
   return (
-    <div className="w-full max-w-xl mx-auto space-y-6">
-      {/* ✅ Show network/host indicator */}
-      {/* <div className="text-xs text-center text-gray-500 bg-gray-100 p-2 rounded">
-        {isIOS ? "🍎 iOS Mode: Optimized for hosted URL" : "🌐 Web Mode"}
-      </div> */}
+    <div className="w-full max-w-xl mx-auto space-y-6 relative">
+      {/* ✅ Clear Storage Button */}
+      <button
+        onClick={() => {
+          try {
+            localStorage.removeItem(STORAGE_KEY);
+            hasRestoredRef.current = true;
+            setError(null);
+          } catch (error) {
+            console.error("Failed to clear playback state:", error);
+          }
+        }}
+        className="fixed absolute bottom-0 right-0 w-2 h-2 bg-gray-200 text-white rounded-full flex items-center justify-center text-xs shadow-md transition-colors z-10"
+        title="Clear playback data"
+        style={{ fontSize: '14px', lineHeight: '1', fontWeight: 'bold' }}
+      >
+        .
+      </button>
+
+      {/* Resume Button - Top Right Corner */}
+{!isPlaying && (() => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.songId && songs.find(s => s._id === parsed.songId)) {
+        return (
+          <button
+            onClick={() => {
+              // Force restore and play
+              const savedState = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+              const savedSong = songs.find(s => s._id === savedState.songId);
+              
+              if (savedSong && audioRef.current) {
+                isRestoringRef.current = true;
+                
+                // Set category if different
+                if (categories.includes(savedState.category)) {
+                  setActiveCategory(savedState.category);
+                }
+                
+                // Build queue
+                const categorySongs = songs.filter(s => s.category === (categories.includes(savedState.category) ? savedState.category : "fav"));
+                playQueueRef.current = savedState.shuffle 
+                  ? [...categorySongs].sort(() => Math.random() - 0.5)
+                  : categorySongs;
+                
+                const songIndex = playQueueRef.current.findIndex(s => s._id === savedState.songId);
+                currentIndexRef.current = songIndex >= 0 ? songIndex : 0;
+                
+                setCurrentSongId(savedState.songId);
+                const audio = audioRef.current;
+                audio.pause();
+                audio.currentTime = 0;
+                
+                const loadAndPlay = (audioSrc: string) => {
+                  audio.src = audioSrc;
+                  audio.load();
+                  
+                  const onMetadataLoaded = () => {
+                    audio.removeEventListener('loadedmetadata', onMetadataLoaded);
+                    if (savedState.currentTime > 0 && audio.duration > 0 && savedState.currentTime < audio.duration) {
+                      audio.currentTime = savedState.currentTime;
+                    }
+                    setCurrentTime(audio.currentTime);
+                    audio.play()
+                      .then(() => {
+                        setIsPlaying(true);
+                        setError(null);
+                        isRestoringRef.current = false;
+                      })
+                      .catch(err => {
+                        console.error("Resume play failed:", err);
+                        setError("Tap play to start");
+                        isRestoringRef.current = false;
+                      });
+                  };
+                  
+                  audio.addEventListener('loadedmetadata', onMetadataLoaded);
+                  
+                  // Timeout in case metadata never loads
+                  setTimeout(() => {
+                    audio.removeEventListener('loadedmetadata', onMetadataLoaded);
+                    isRestoringRef.current = false;
+                  }, 5000);
+                };
+                
+                if (isIOS) {
+                  fetchAudioAsBlob(savedSong.audioUrl)
+                    .then(blobUrl => loadAndPlay(blobUrl))
+                    .catch(() => loadAndPlay(`${savedSong.audioUrl}?t=${Date.now()}`));
+                } else {
+                  loadAndPlay(`${savedSong.audioUrl}?t=${Date.now()}`);
+                }
+              }
+            }}
+            className="fixed absolute top-0 right-10 w-8 h-8 bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center justify-center shadow-md transition-colors z-10"
+            title="Resume last session"
+            style={{ fontSize: '14px' }}
+          >
+            <FaHistory />
+          </button>
+        );
+      }
+    }
+  } catch (e) {
+    // Ignore invalid state
+  }
+  return null;
+})()}
       
       {/* ✅ Error display */}
       {error && (
@@ -313,18 +725,8 @@ export default function SongList() {
         ref={audioRef} 
         preload={isIOS ? "metadata" : "auto"}
         onEnded={handleEnded}
-        onError={(e) => {
-          console.error("Audio element error:", e);
-          currentIndexRef.current += 1;
-          if (currentIndexRef.current < playQueueRef.current.length) {
-            setTimeout(() => playCurrent(), 500);
-          } else {
-            setIsPlaying(false);
-          }
-        }}
       />
 
-      {/* REST OF YOUR UI REMAINS THE SAME */}
       {/* 🔹 GLOBAL CONTROLS */}
       <div className="flex gap-3 flex-wrap items-center">
         <button
