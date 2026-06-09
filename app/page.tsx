@@ -615,7 +615,7 @@ export default function SongList() {
       </button>
 
       {/* Resume Button - Top Right Corner */}
-{!isPlaying && (() => {
+{!isPlaying && !isLoading && !currentSongId && (() => {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
